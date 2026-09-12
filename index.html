@@ -38,6 +38,18 @@
   .chip{flex:0 0 auto; padding:6px 15px; border-radius:999px; background:#fff; border:1px solid var(--line); font-size:13.5px; color:#6f6154; cursor:pointer;}
   .chip.on{background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600;}
 
+  /* search bar */
+  .searchbar{display:flex; gap:8px; padding:12px 14px 0; align-items:center;}
+  .searchbar input{flex:1; border-radius:999px; padding:9px 16px; font-size:14px;}
+  .searchbar .clear{flex:0 0 auto; width:32px; height:32px; border-radius:50%; border:1px solid var(--line); background:#fff; color:#a4937f; font-size:16px; cursor:pointer;}
+
+  /* category sections */
+  .cathead{position:sticky; top:64px; z-index:10; margin:14px 14px 2px; padding:4px 2px; font-size:14px; font-weight:700; color:#8a7a68; background:var(--bg);}
+  .cathead small{font-weight:400; color:#b3a591; margin-left:6px;}
+  .badge.timeb{background:#4f8fc0;}
+  input[type=time]{width:100%; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:15px; background:#fcfaf7; color:var(--ink); outline:none; font-family:inherit;}
+  .mini.arrow{padding:7px 9px; font-weight:700;}
+
   /* dish image */
   .imgwrap{width:62px; height:62px; border-radius:12px; background:#f6efe6; flex:0 0 auto; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;}
   .imgwrap.sm{width:46px; height:46px; border-radius:10px;}
@@ -192,6 +204,10 @@
 <main>
   <!-- 点菜视图 -->
   <section id="viewOrder">
+    <div class="searchbar">
+      <input type="text" id="searchBox" placeholder="🔍 搜索菜名 / 备注" autocomplete="off">
+      <button class="clear" id="searchClear" hidden aria-label="清除搜索">×</button>
+    </div>
     <div class="tagbar" id="tagBar"></div>
     <div id="dishList"></div>
     <div class="empty" id="emptyMenu" hidden>
@@ -304,6 +320,12 @@
   <label class="flabel">图片（预留）</label>
   <input type="text" id="editImg" placeholder="粘贴图片网址，或留空">
   <div class="val" style="font-size:12px;color:#b3a591;margin-top:6px;line-height:1.6">也可以把图片文件按菜名放进页面同目录的 img 文件夹（如 img/红烧肉.jpg 或 .png），会自动显示；留空则显示占位图。</div>
+  <label class="flabel">限时供应（可选，每天同一时段）</label>
+  <div class="row2">
+    <div><input type="time" id="editT1" title="开始时间"></div>
+    <div><input type="time" id="editT2" title="结束时间"></div>
+  </div>
+  <div class="val" style="font-size:12px;color:#b3a591;margin-top:6px;line-height:1.6">开始和结束都选了才生效，可跨零点（如 21:00–01:00）；时段外家人看到"未开始/已结束"，不能点。留空则不限时。</div>
   <label class="flabel">备注（做法、口味提示）</label>
   <input type="text" id="editNote" placeholder="选填">
   <div class="btns">
@@ -389,12 +411,12 @@ const dishByName = n => dishes.find(d => d.name === n);
 
 /* ================= 菜单编解码 / 同步 ================= */
 function menuCompact() {
-  return dishes.map(d => [d.name, d.tag || '', d.note || '', d.off ? 1 : '', d.img || ''].join('~')).join('|');
+  return dishes.map(d => [d.name, d.tag || '', d.note || '', d.off ? 1 : '', d.img || '', d.t1 || '', d.t2 || ''].join('~')).join('|');
 }
 function parseMenuCompact(raw) {
   return raw.split('|').filter(x => x.trim() !== '').map(x => {
-    const [name, tag, note, off, img] = x.split('~');
-    return { name: (name || '').trim(), tag: TAGS.includes(tag) ? tag : '其他', note: note || '', off: off === '1', img: img || '' };
+    const [name, tag, note, off, img, t1, t2] = x.split('~');
+    return { name: (name || '').trim(), tag: TAGS.includes(tag) ? tag : '其他', note: note || '', off: off === '1', img: img || '', t1: t1 || '', t2: t2 || '' };
   }).filter(d => d.name);
 }
 function applyMenu(list, fromRemote) {
@@ -575,28 +597,83 @@ function renderTagBar() {
   const bar = $('#tagBar');
   bar.innerHTML = ['全部'].concat(TAGS).map(t =>
     '<button class="chip' + (curTag === t ? ' on' : '') + '" data-tag="' + t + '">' + t + '</button>').join('');
-  $$('#tagBar .chip').forEach(c => c.onclick = () => { curTag = c.dataset.tag; renderTagBar(); renderDishes(); });
+  $$('#tagBar .chip').forEach(c => c.onclick = () => {
+    curTag = c.dataset.tag;
+    renderTagBar();
+    if (($('#searchBox').value || '').trim()) { $('#searchBox').value = ''; renderDishes(); }
+    const sec = document.getElementById('sec-' + c.dataset.tag);
+    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+function toMin(t) { const p = (t || '').split(':'); return (+p[0] || 0) * 60 + (+p[1] || 0); }
+function timeState(d) {
+  // 限时状态：{limited:是否限时, active:当前是否可点, label:'16:00–19:00', tip:'未开始/已结束'}
+  if (!d.t1 || !d.t2) return { limited: false, active: true, label: '', tip: '' };
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const s = toMin(d.t1), e = toMin(d.t2);
+  const active = s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e); // 跨零点：21:00–01:00
+  const tip = active ? '' : (cur < s ? '未开始' : '已结束');
+  return { limited: true, active, label: d.t1 + '–' + d.t2, tip };
+}
+function dishCardHtml(d) {
+  const st = timeState(d);
+  const n = cart[d.name] || 0;
+  const disabled = d.off || !st.active;
+  let badges = '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>';
+  if (st.limited) badges += st.active
+    ? '<span class="badge timeb">⏰ 限时 ' + st.label + '</span>'
+    : '<span class="offmark">⏰ ' + st.label + ' ' + st.tip + '</span>';
+  if (d.off) badges += '<span class="offmark">今日不做</span>';
+  const ctl = disabled ? '' : (n > 0
+    ? '<div class="stepper"><button class="minus" data-name="' + esc(d.name) + '" data-act="dec">−</button><span class="num">' + n + '</span><button data-name="' + esc(d.name) + '" data-act="inc">+</button></div>'
+    : '<button class="addbtn" data-name="' + esc(d.name) + '" data-act="inc">+ 加菜</button>');
+  return '<div class="dish' + (disabled ? ' off' : '') + '">' + dishImgHtml(d) +
+    '<div class="info"><div class="name">' + esc(d.name) + badges + '</div>' +
+    (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>' + ctl + '</div>';
 }
 function renderDishes() {
+  const q = ($('#searchBox').value || '').trim().toLowerCase();
+  $('#tagBar').hidden = !!q;
+  $('#searchClear').hidden = !q;
   const list = $('#dishList');
-  const arr = dishes.filter(d => curTag === '全部' || d.tag === curTag);
   $('#emptyMenu').hidden = dishes.length > 0;
-  list.innerHTML = arr.map(d => {
-    const n = cart[d.name] || 0;
-    const ctl = d.off ? '' : (n > 0
-      ? '<div class="stepper"><button class="minus" data-name="' + esc(d.name) + '" data-act="dec">−</button><span class="num">' + n + '</span><button data-name="' + esc(d.name) + '" data-act="inc">+</button></div>'
-      : '<button class="addbtn" data-name="' + esc(d.name) + '" data-act="inc">+ 加菜</button>');
-    return '<div class="dish' + (d.off ? ' off' : '') + '">' + dishImgHtml(d) +
-      '<div class="info"><div class="name">' + esc(d.name) +
-      '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>' +
-      (d.off ? '<span class="offmark">今日不做</span>' : '') + '</div>' +
-      (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>' + ctl + '</div>';
-  }).join('');
+  if (!dishes.length) { list.innerHTML = ''; renderHeader(); return; }
+  const arr = dishes.filter(d => !q ||
+    d.name.toLowerCase().includes(q) || (d.note || '').toLowerCase().includes(q) || (d.tag || '').includes(q));
+  if (q && !arr.length) {
+    list.innerHTML = '<div class="empty" style="padding:50px 20px"><div class="big">🔍</div><p>没有找到「' + esc($('#searchBox').value.trim()) + '」</p></div>';
+    renderHeader(); return;
+  }
+  if (q) {
+    list.innerHTML = '<div class="cathead">搜索结果 <small>' + arr.length + ' 道</small></div>' + arr.map(dishCardHtml).join('');
+  } else {
+    list.innerHTML = TAGS.filter(t => arr.some(d => d.tag === t)).map(t => {
+      const items = arr.filter(d => d.tag === t);
+      return '<div class="catsec" id="sec-' + t + '"><div class="cathead">' + t + ' <small>' + items.length + ' 道</small></div>' +
+        items.map(dishCardHtml).join('') + '</div>';
+    }).join('');
+  }
   $$('#dishList button[data-act]').forEach(b => b.onclick = () => {
     addToCart(b.dataset.name, b.dataset.act === 'inc' ? 1 : -1);
   });
   renderHeader();
 }
+/* 滚动时高亮当前分类 */
+let spyTick = false;
+window.addEventListener('scroll', () => {
+  if (spyTick) return; spyTick = true;
+  requestAnimationFrame(() => {
+    spyTick = false;
+    if ($('#viewOrder').hidden || ($('#searchBox').value || '').trim()) return;
+    const secs = $$('#dishList .catsec');
+    if (!secs.length) return;
+    let cur = '全部';
+    for (const s of secs) if (s.getBoundingClientRect().top <= 120) cur = s.id.slice(4);
+    $$('#tagBar .chip').forEach(c => c.classList.toggle('on', c.dataset.tag === cur));
+  });
+}, { passive: true });
 function renderHeader() {
   $('#appTitle').textContent = cfg.family + ' · 今晚吃啥';
   const offN = dishes.filter(d => d.off).length;
@@ -828,20 +905,26 @@ function renderAdminDishes() {
     list.innerHTML = '<div class="empty" style="padding:40px 20px"><div class="big">🍳</div><p>还没有菜品，在上面输入菜名添加吧</p></div>';
     return;
   }
-  list.innerHTML = dishes.map(d =>
-    '<div class="arow">' + dishImgHtml(d, true) +
+  list.innerHTML = dishes.map(d => {
+    const st = timeState(d);
+    return '<div class="arow">' + dishImgHtml(d, true) +
     '<div class="info"><div class="name">' + esc(d.name) +
     '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>' +
+    (st.limited ? '<span class="badge timeb' + (st.active ? '' : '" style="background:#b3a591') + '">⏰ ' + esc(st.label) + (st.active ? '' : ' ' + st.tip) + '</span>' : '') +
     (d.off ? '<span class="offmark">今日不做</span>' : '') + '</div>' +
     (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>' +
     '<div class="ops">' +
+    '<button class="mini arrow" data-name="' + esc(d.name) + '" data-act="up" title="上移">↑</button>' +
+    '<button class="mini arrow" data-name="' + esc(d.name) + '" data-act="down" title="下移">↓</button>' +
     '<button class="mini ' + (d.off ? 'gray' : 'green') + '" data-name="' + esc(d.name) + '" data-act="off">' + (d.off ? '已停' : '供应') + '</button>' +
     '<button class="mini" data-name="' + esc(d.name) + '" data-act="edit">编辑</button>' +
     '<button class="mini red" data-name="' + esc(d.name) + '" data-act="del">删除</button>' +
-    '</div></div>').join('');
+    '</div></div>';
+  }).join('');
   $$('#adminDishList button[data-act]').forEach(b => b.onclick = () => {
     const d = dishByName(b.dataset.name); if (!d) return;
-    if (b.dataset.act === 'off') { d.off = !d.off; menuChanged(); renderAdminDishes(); }
+    if (b.dataset.act === 'up' || b.dataset.act === 'down') moveDish(d.name, b.dataset.act === 'up' ? -1 : 1);
+    else if (b.dataset.act === 'off') { d.off = !d.off; menuChanged(); renderAdminDishes(); }
     else if (b.dataset.act === 'edit') openDishModal(d.name);
     else if (b.dataset.act === 'del') {
       if (confirm('确定删除「' + d.name + '」？')) {
@@ -852,6 +935,12 @@ function renderAdminDishes() {
     }
   });
 }
+function moveDish(name, dir) {
+  const i = dishes.findIndex(d => d.name === name), j = i + dir;
+  if (i < 0 || j < 0 || j >= dishes.length) return;
+  const tmp = dishes[i]; dishes[i] = dishes[j]; dishes[j] = tmp;
+  menuChanged(); renderAdminDishes();
+}
 function openDishModal(name) {
   editingName = name || null;
   $('#dishModalTitle').textContent = name ? '编辑菜品' : '添加菜品';
@@ -861,6 +950,8 @@ function openDishModal(name) {
   $('#editTag').value = d ? d.tag : '其他';
   $('#editOff').value = d && d.off ? '1' : '0';
   $('#editImg').value = d ? (d.img || '') : '';
+  $('#editT1').value = d ? (d.t1 || '') : '';
+  $('#editT2').value = d ? (d.t2 || '') : '';
   $('#editNote').value = d ? (d.note || '') : '';
   $('#btnDelDish').hidden = !name;
   $('#dishMask').hidden = false; $('#dishModal').hidden = false;
@@ -870,16 +961,18 @@ function saveDish() {
   const name = ($('#editName').value || '').trim();
   if (!name) { toast('菜名不能为空'); return; }
   if (dishes.some(d => d.name === name && d.name !== editingName)) { toast('已有同名菜品'); return; }
+  const t1 = ($('#editT1').value || '').trim(), t2 = ($('#editT2').value || '').trim();
+  if ((t1 && !t2) || (!t1 && t2)) { toast('限时的开始和结束时间要同时填写'); return; }
   const tag = $('#editTag').value, off = $('#editOff').value === '1';
   const img = ($('#editImg').value || '').trim(), note = ($('#editNote').value || '').trim();
   if (editingName) {
     const d = dishByName(editingName);
     if (d) {
-      Object.assign(d, { name, tag, off, img, note });
+      Object.assign(d, { name, tag, off, img, note, t1, t2 });
       if (name !== editingName && cart[editingName]) { cart[name] = cart[editingName]; delete cart[editingName]; saveCart(); }
     }
   } else {
-    dishes.push({ name, tag, off, img, note });
+    dishes.push({ name, tag, off, img, note, t1, t2 });
   }
   menuChanged(); renderAdminDishes();
   $('#dishMask').hidden = true; $('#dishModal').hidden = true;
@@ -891,6 +984,8 @@ function bind() {
   $('#btnGoAdmin').onclick = () => showView('admin');
   $('#btnBack').onclick = () => showView('order');
   $$('.tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+  $('#searchBox').addEventListener('input', renderDishes);
+  $('#searchClear').onclick = () => { $('#searchBox').value = ''; renderDishes(); $('#searchBox').focus(); };
 
   $('#quickAdd').onclick = quickAdd;
   $('#quickName').addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
