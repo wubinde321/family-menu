@@ -51,7 +51,7 @@
   .mini.arrow{padding:7px 9px; font-weight:700;}
 
   /* dish image */
-  .imgwrap{width:62px; height:62px; border-radius:12px; background:#f6efe6; flex:0 0 auto; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;}
+  .imgwrap{width:62px; height:62px; border-radius:12px; background:#f6efe6; flex:0 0 auto; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; cursor:zoom-in;}
   .imgwrap.sm{width:46px; height:46px; border-radius:10px;}
   .imgph{font-size:24px; opacity:.5;}
   .imgwrap.sm .imgph{font-size:19px;}
@@ -192,6 +192,9 @@
     background:rgba(40,25,12,.85); color:#fff; font-size:14px; padding:10px 18px; border-radius:999px;
     max-width:80vw; text-align:center; animation:fadein .18s;
   }
+  /* 图片放大查看 */
+  #imgView{position:fixed; inset:0; z-index:80; background:rgba(20,12,5,.82); display:flex; align-items:center; justify-content:center; padding:20px; cursor:zoom-out;}
+  #imgView img{max-width:92vw; max-height:82vh; border-radius:14px; box-shadow:0 8px 40px rgba(0,0,0,.5); background:#fff; cursor:zoom-out;}
   @keyframes fadein{from{opacity:0; transform:translateX(-50%) translateY(8px);} to{opacity:1; transform:translateX(-50%) translateY(0);}}
   [hidden]{display:none !important;}
 </style>
@@ -373,6 +376,8 @@
     <button class="primary" id="btnViewOrders">查看点菜单</button>
   </div>
 </div>
+
+<div id="imgView" hidden><img alt="菜品大图"></div>
 
 <div id="toast" hidden></div>
 
@@ -590,13 +595,19 @@ function showView(v) {
 /* ================= 图片 ================= */
 function dishImgHtml(d, small) {
   const cls = small ? 'imgwrap sm' : 'imgwrap';
+  const click = 'onclick="event.stopPropagation();showBigImg(this)"';
   if (d.img) {
     return '<div class="' + cls + '"><div class="imgph">🍽️</div>' +
-      '<img class="dimg" alt="" src="' + esc(d.img) + '" onerror="imgErr(this)" onload="imgOk(this)"></div>';
+      '<img class="dimg" alt="" src="' + esc(d.img) + '" ' + click + ' onerror="imgErr(this)" onload="imgOk(this)"></div>';
   }
   // 自动匹配：img/菜名.jpg → .jpeg → .png → .webp 依次尝试
   return '<div class="' + cls + '"><div class="imgph">🍽️</div>' +
-    '<img class="dimg" alt="" data-auto="1" data-name="' + esc(d.name) + '" data-idx="0" data-cands="jpg,jpeg,png,webp" src="img/' + d.name + '.jpg" onerror="imgErr(this)" onload="imgOk(this)"></div>';
+    '<img class="dimg" alt="" data-auto="1" data-name="' + esc(d.name) + '" data-idx="0" data-cands="jpg,jpeg,png,webp" src="img/' + d.name + '.jpg" ' + click + ' onerror="imgErr(this)" onload="imgOk(this)"></div>';
+}
+function showBigImg(el) {
+  if (el.style.display !== 'block') return; // 没加载成功的占位图不放大
+  $('#imgView').querySelector('img').src = el.src;
+  $('#imgView').hidden = false;
 }
 window.imgErr = function (el) {
   if (el.dataset.auto !== '1') { el.style.display = 'none'; return; }
@@ -1031,6 +1042,7 @@ function bind() {
   $$('.tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
   $('#searchBox').addEventListener('input', renderDishes);
   $('#searchClear').onclick = () => { $('#searchBox').value = ''; renderDishes(); $('#searchBox').focus(); };
+  $('#imgView').onclick = () => { $('#imgView').hidden = true; };
 
   $('#quickAdd').onclick = quickAdd;
   $('#quickName').addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
