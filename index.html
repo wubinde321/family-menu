@@ -391,8 +391,8 @@ function menuHash(s) {
 }
 
 /* ================= 状态（菜品以菜名为唯一标识） ================= */
-const TAGS = ['荤菜', '素菜', '汤羹', '主食', '其他'];
-const TAG_COLOR = {'荤菜':'#e0654f','素菜':'#5aa06a','汤羹':'#4f8fc0','主食':'#b78b3e','其他':'#a4937f'};
+const TAGS = ['荤菜', '素菜', '时令', '汤羹', '面食', '主食', '其他'];
+const TAG_COLOR = {'荤菜':'#e0654f','素菜':'#5aa06a','时令':'#6da34d','汤羹':'#4f8fc0','面食':'#9a6fb8','主食':'#b78b3e','其他':'#a4937f'};
 let dishes = load('cc_menu', []);
 let orders = load('cc_orders', []);
 let cfg = Object.assign({ family: '我家', base: '', topic: '', realtime: true, myName: '' }, load('cc_cfg', {}));
@@ -577,15 +577,21 @@ function showView(v) {
 /* ================= 图片 ================= */
 function dishImgHtml(d, small) {
   const cls = small ? 'imgwrap sm' : 'imgwrap';
-  const auto = d.img ? '' : ' data-auto="1"';
-  const src = d.img || ('img/' + d.name + '.jpg');
+  if (d.img) {
+    return '<div class="' + cls + '"><div class="imgph">🍽️</div>' +
+      '<img class="dimg" alt="" src="' + esc(d.img) + '" onerror="imgErr(this)" onload="imgOk(this)"></div>';
+  }
+  // 自动匹配：img/菜名.jpg → .jpeg → .png → .webp 依次尝试
   return '<div class="' + cls + '"><div class="imgph">🍽️</div>' +
-    '<img class="dimg" alt="" data-name="' + esc(d.name) + '"' + auto + ' src="' + esc(src) + '" onerror="imgErr(this)" onload="imgOk(this)"></div>';
+    '<img class="dimg" alt="" data-auto="1" data-name="' + esc(d.name) + '" data-idx="0" data-cands="jpg,jpeg,png,webp" src="img/' + d.name + '.jpg" onerror="imgErr(this)" onload="imgOk(this)"></div>';
 }
 window.imgErr = function (el) {
-  if (el.dataset.auto === '1' && !el.dataset.tried) {
-    el.dataset.tried = '1';
-    el.src = 'img/' + el.dataset.name + '.png';
+  if (el.dataset.auto !== '1') { el.style.display = 'none'; return; }
+  const cands = (el.dataset.cands || '').split(',');
+  const next = (+el.dataset.idx || 0) + 1;
+  if (next < cands.length) {
+    el.dataset.idx = next;
+    el.src = 'img/' + el.dataset.name + '.' + cands[next];
     return;
   }
   el.style.display = 'none';
