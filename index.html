@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4643c">
+<title>今晚吃啥 · 家庭点菜单</title>
+<script src="qrcode.min.js"></script>
+<script>if(typeof qrcode==='undefined'){document.write('<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"><\/script>');}</script>
+<style>
+  :root{
+    --brand:#f4643c; --brand-dark:#d94f2a; --bg:#faf6f0; --card:#ffffff;
+    --ink:#33291f; --sub:#9a8c7d; --line:#f0e6da; --ok:#4a9d5f;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--ink); font-size:15px;
+    padding-bottom:calc(84px + env(safe-area-inset-bottom));
+  }
+  header{
+    position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    padding:14px 16px 10px; background:rgba(250,246,240,.94); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  header h1{margin:0; font-size:20px; letter-spacing:.5px;}
+  header .meta{font-size:12px; color:var(--sub); margin-top:2px;}
+  #btnAdmin{
+    width:38px; height:38px; border-radius:50%; border:1px solid var(--line); background:#fff;
+    font-size:18px; line-height:1; cursor:pointer;
+  }
+  main{max-width:640px; margin:0 auto;}
+
+  /* tag chips */
+  .tagbar{display:flex; gap:8px; overflow-x:auto; padding:12px 14px 4px; scrollbar-width:none;}
+  .tagbar::-webkit-scrollbar{display:none;}
+  .chip{flex:0 0 auto; padding:6px 15px; border-radius:999px; background:#fff; border:1px solid var(--line); font-size:13.5px; color:#6f6154; cursor:pointer;}
+  .chip.on{background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600;}
+
+  /* dish image */
+  .imgwrap{width:62px; height:62px; border-radius:12px; background:#f6efe6; flex:0 0 auto; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;}
+  .imgwrap.sm{width:46px; height:46px; border-radius:10px;}
+  .imgph{font-size:24px; opacity:.5;}
+  .imgwrap.sm .imgph{font-size:19px;}
+  .dimg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none;}
+
+  /* dish card */
+  .dish{display:flex; align-items:center; gap:12px; background:var(--card); border-radius:14px; padding:12px 14px; margin:10px 14px; box-shadow:0 1px 4px rgba(90,60,30,.05);}
+  .dish .info{flex:1; min-width:0;}
+  .dish .name{font-size:16px; font-weight:600;}
+  .dish .sub{font-size:12px; color:var(--sub); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .badge{display:inline-block; font-size:11px; padding:1.5px 7px; border-radius:6px; margin-left:8px; vertical-align:2px; color:#fff;}
+  .dish.off .name,.dish.off .sub,.dish.off .imgwrap{opacity:.4;}
+  .offmark{font-size:11px; color:var(--sub); border:1px solid var(--line); border-radius:6px; padding:1px 6px; margin-left:8px;}
+  .stepper{display:flex; align-items:center; gap:10px;}
+  .stepper button,.addbtn{
+    width:30px; height:30px; border-radius:50%; border:none; background:var(--brand); color:#fff;
+    font-size:18px; line-height:1; cursor:pointer; font-weight:700;
+  }
+  .stepper .minus{background:#fff; color:var(--brand); border:1.5px solid var(--brand);}
+  .stepper .num{min-width:18px; text-align:center; font-weight:700; font-size:16px;}
+  .addbtn{width:auto; height:30px; border-radius:999px; padding:0 14px; font-size:13.5px; font-weight:600;}
+
+  .empty{text-align:center; padding:70px 30px; color:var(--sub);}
+  .empty .big{font-size:44px;}
+  .empty p{margin:10px 0 18px;}
+
+  /* buttons */
+  button.primary{background:var(--brand); color:#fff; border:none; border-radius:12px; padding:11px 18px; font-size:15px; font-weight:600; cursor:pointer;}
+  button.primary:active{background:var(--brand-dark);}
+  button.plain{background:#fff; border:1px solid var(--line); color:#6f6154; border-radius:12px; padding:10px 16px; font-size:14px; cursor:pointer;}
+  button.danger{background:#fdeceb; border:none; color:#d5493a; border-radius:12px; padding:10px 16px; font-size:14px; cursor:pointer;}
+  button.big{width:100%; padding:14px; font-size:16px;}
+  .btnrow{display:flex; gap:10px; padding:16px 14px;}
+  .btnrow button{flex:1;}
+
+  /* cart bar */
+  #cartBar{
+    position:fixed; left:0; right:0; bottom:0; z-index:30;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    max-width:640px; margin:0 auto; padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:#fff; border-top:1px solid var(--line);
+  }
+  #cartInfo{font-size:14.5px; font-weight:600;}
+  #cartInfo span{color:var(--sub); font-weight:400; font-size:12.5px; display:block; margin-top:2px;}
+  #cartBar button{min-width:130px;}
+
+  /* masks / sheets / modals */
+  .mask{position:fixed; inset:0; background:rgba(40,25,12,.45); z-index:40;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:50; max-width:640px; margin:0 auto;
+    background:#fff; border-radius:20px 20px 0 0; padding:10px 18px calc(20px + env(safe-area-inset-bottom));
+    max-height:82vh; overflow-y:auto;
+  }
+  .modal{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:50;
+    width:min(92vw,420px); max-height:86vh; overflow-y:auto;
+    background:#fff; border-radius:18px; padding:20px 18px;
+  }
+  .sheet-handle{width:42px; height:4px; border-radius:2px; background:#e5d9ca; margin:4px auto 12px;}
+  .modal h3,.sheet h3{margin:2px 0 14px; font-size:17px; text-align:center;}
+  .flabel{display:block; font-size:12.5px; color:var(--sub); margin:12px 0 6px;}
+  input[type=text],textarea,select{
+    width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:15px;
+    background:#fcfaf7; color:var(--ink); font-family:inherit; outline:none;
+  }
+  input[type=text]:focus,textarea:focus{border-color:var(--brand);}
+  .modal .row2{display:flex; gap:10px;}
+  .modal .row2>div{flex:1;}
+  .modal .btns{display:flex; gap:10px; margin-top:18px;}
+  .modal .btns button{flex:1;}
+
+  /* admin */
+  .backrow{padding:12px 14px 0;}
+  .backrow button{background:none; border:none; color:var(--brand); font-size:14.5px; cursor:pointer; padding:6px 0;}
+  .tabs{display:flex; margin-top:6px; border-bottom:1px solid var(--line);}
+  .tab{flex:1; padding:11px 0; text-align:center; font-size:15px; color:var(--sub); background:none; border:none; border-bottom:2.5px solid transparent; cursor:pointer;}
+  .tab.on{color:var(--brand); font-weight:700; border-bottom-color:var(--brand);}
+  .tabpanel{padding-bottom:24px;}
+  .quickadd{display:flex; gap:10px; padding:14px 14px 4px;}
+  .quickadd input{flex:1;}
+  .quickadd button{flex:0 0 auto;}
+
+  .arow{display:flex; align-items:center; gap:10px; background:#fff; border-radius:13px; padding:10px 13px; margin:9px 14px; box-shadow:0 1px 4px rgba(90,60,30,.05);}
+  .arow .info{flex:1; min-width:0;}
+  .arow .name{font-weight:600; font-size:15.5px;}
+  .arow .sub{font-size:12px; color:var(--sub); margin-top:2px;}
+  .arow .ops{display:flex; gap:6px; flex:0 0 auto;}
+  .mini{border:none; border-radius:9px; padding:7px 11px; font-size:12.5px; cursor:pointer; background:#f6ede2; color:#6f6154;}
+  .mini.red{background:#fdeceb; color:#d5493a;}
+  .mini.green{background:#e7f4ea; color:#3c8750;}
+  .mini.gray{background:#efeae3; color:#a4937f;}
+
+  .ordercard{background:#fff; border-radius:14px; margin:10px 14px; padding:13px 15px; box-shadow:0 1px 4px rgba(90,60,30,.05);}
+  .ordercard .head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+  .ordercard .who{font-weight:700; font-size:15.5px;}
+  .ordercard .time{font-size:12px; color:var(--sub);}
+  .ordercard ul{margin:4px 0; padding-left:2px; list-style:none; font-size:14.5px; line-height:1.8;}
+  .ordercard .note{font-size:13px; color:#b06a28; background:#fdf3e4; border-radius:8px; padding:6px 10px; margin-top:6px;}
+  .ordercard.done{opacity:.55;}
+  .ordercard .foot{display:flex; justify-content:flex-end; margin-top:8px;}
+  .daytitle{margin:16px 16px 2px; font-size:13px; color:var(--sub); font-weight:600;}
+  .orderhead{display:flex; justify-content:space-between; align-items:center; padding:14px 16px 0; font-size:13.5px; color:var(--sub);}
+  .orderhead button{background:none; border:none; color:#d5493a; font-size:13.5px; cursor:pointer;}
+
+  /* settings */
+  .setting{background:#fff; border-radius:14px; margin:10px 14px; padding:13px 15px;}
+  .setting .lab{font-size:13px; color:var(--sub); margin-bottom:7px;}
+  .setting .val{font-size:12px; color:#b3a591; margin-top:6px; word-break:break-all; line-height:1.6;}
+  .switchrow{display:flex; justify-content:space-between; align-items:center;}
+  .switch{position:relative; width:48px; height:28px; flex:0 0 auto;}
+  .switch input{opacity:0; width:0; height:0;}
+  .switch em{position:absolute; inset:0; background:#ddd2c4; border-radius:999px; transition:.2s; cursor:pointer;}
+  .switch em:before{content:""; position:absolute; width:22px; height:22px; border-radius:50%; background:#fff; top:3px; left:3px; transition:.2s; box-shadow:0 1px 3px rgba(0,0,0,.2);}
+  .switch input:checked + em{background:var(--ok);}
+  .switch input:checked + em:before{left:23px;}
+  .setting .btns2{display:flex; gap:8px; margin-top:10px;}
+  .setting .btns2 button{flex:1;}
+
+  /* done modal */
+  #doneBody{text-align:center;}
+  #doneBody .ok{font-size:46px; margin:4px 0 6px;}
+  #doneBody h3{margin:0 0 10px;}
+  #doneBody ul{list-style:none; padding:0; margin:8px 0; font-size:15px; line-height:1.9; text-align:left; display:inline-block;}
+  #doneBody .note{font-size:13px; color:#b06a28; background:#fdf3e4; border-radius:8px; padding:6px 10px;}
+  .hint{font-size:12.5px; color:var(--sub); line-height:1.7; text-align:left;}
+
+  #qrBox{display:flex; justify-content:center; margin:6px 0 10px;}
+  #qrBox canvas{border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.08);}
+  #qrLink{font-size:11px; color:var(--sub); word-break:break-all; margin-bottom:10px;}
+
+  #toast{
+    position:fixed; left:50%; bottom:110px; transform:translateX(-50%); z-index:99;
+    background:rgba(40,25,12,.85); color:#fff; font-size:14px; padding:10px 18px; border-radius:999px;
+    max-width:80vw; text-align:center; animation:fadein .18s;
+  }
+  @keyframes fadein{from{opacity:0; transform:translateX(-50%) translateY(8px);} to{opacity:1; transform:translateX(-50%) translateY(0);}}
+  [hidden]{display:none !important;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1 id="appTitle">今晚吃啥</h1>
+    <div class="meta" id="menuMeta"></div>
+  </div>
+  <button id="btnAdmin" aria-label="管理">⚙️</button>
+</header>
+
+<main>
+  <!-- 点菜视图 -->
+  <section id="viewOrder">
+    <div class="tagbar" id="tagBar"></div>
+    <div id="dishList"></div>
+    <div class="empty" id="emptyMenu" hidden>
+      <div class="big">🍲</div>
+      <p>菜单还没设置好<br>先添加几道拿手菜吧</p>
+      <button class="primary" id="btnGoAdmin">去添加菜品</button>
+    </div>
+  </section>
+
+  <!-- 管理视图 -->
+  <section id="viewAdmin" hidden>
+    <div class="backrow"><button id="btnBack">‹ 返回点菜</button></div>
+    <div class="tabs">
+      <button class="tab on" data-tab="menu">菜单</button>
+      <button class="tab" data-tab="orders">点菜单</button>
+      <button class="tab" data-tab="cfg">设置</button>
+    </div>
+
+    <div class="tabpanel" id="tabMenu">
+      <div class="quickadd">
+        <input type="text" id="quickName" placeholder="输入菜名，回车快速添加">
+        <button class="primary" id="quickAdd">添加</button>
+      </div>
+      <div id="adminDishList"></div>
+      <div class="btnrow">
+        <button class="primary" id="btnQr">生成点菜二维码 / 链接</button>
+      </div>
+    </div>
+
+    <div class="tabpanel" id="tabOrders" hidden>
+      <div class="orderhead"><span id="orderCount"></span><button id="btnClear">清空今日</button></div>
+      <div id="orderList"></div>
+    </div>
+
+    <div class="tabpanel" id="tabCfg" hidden>
+      <div class="setting">
+        <div class="lab">家庭名称</div>
+        <input type="text" id="cfgFamily" placeholder="例如：老王家">
+        <div class="val">显示在页面标题和点菜消息里</div>
+      </div>
+      <div class="setting">
+        <div class="lab">页面网址（远程访问时填写）</div>
+        <input type="text" id="cfgBase" placeholder="https://xxx.edgeone.app 或 https://你的用户名.github.io/family-menu/">
+        <div class="val">把本页面托管到网上后，在这里填上网址再生成二维码。直接用托管网址打开本页时无需填写。</div>
+      </div>
+      <div class="setting">
+        <div class="switchrow">
+          <div>
+            <div class="lab" style="margin:0">实时同步</div>
+            <div class="val" id="rtStatus"></div>
+          </div>
+          <label class="switch"><input type="checkbox" id="cfgRealtime"><em></em></label>
+        </div>
+        <div class="val">开启后：家人提交点菜立刻送达提醒，菜单改动也会自动同步到所有家人的设备（使用免费的 ntfy.sh 公共频道，频道号随机、仅随链接分享）。二维码长期有效，改菜不用重新分享。</div>
+        <div class="btns2">
+          <button class="plain" id="btnTestMsg">发条测试消息</button>
+          <button class="plain" id="btnNewTopic">换一个频道号</button>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="lab">数据备份</div>
+        <div class="btns2">
+          <button class="plain" id="btnExport">复制备份</button>
+          <button class="plain" id="btnImport">导入备份</button>
+        </div>
+        <div class="val">换手机时，先在旧手机"复制备份"，再到新手机"导入备份"。</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 购物条 -->
+<div id="cartBar" hidden>
+  <div id="cartInfo"></div>
+  <button class="primary" id="btnCart">去提交</button>
+</div>
+
+<!-- 点菜确认抽屉 -->
+<div class="mask" id="sheetMask" hidden></div>
+<div class="sheet" id="cartSheet" hidden>
+  <div class="sheet-handle"></div>
+  <h3>确认点菜</h3>
+  <label class="flabel">我是谁</label>
+  <input type="text" id="orderName" placeholder="例如：小明">
+  <div id="cartItems"></div>
+  <label class="flabel">备注（口味、忌口、想几点吃…）</label>
+  <textarea id="orderNote" rows="2" placeholder="例如：少辣 / 7点开饭"></textarea>
+  <div style="margin-top:16px"><button class="primary big" id="btnSubmit">提交点菜</button></div>
+</div>
+
+<!-- 菜品编辑弹窗 -->
+<div class="mask" id="dishMask" hidden></div>
+<div class="modal" id="dishModal" hidden>
+  <h3 id="dishModalTitle">添加菜品</h3>
+  <label class="flabel">菜名</label>
+  <input type="text" id="editName" placeholder="例如：番茄炒蛋">
+  <div class="row2">
+    <div>
+      <label class="flabel">分类</label>
+      <select id="editTag"></select>
+    </div>
+    <div>
+      <label class="flabel">今日状态</label>
+      <select id="editOff">
+        <option value="0">供应中</option>
+        <option value="1">今日不做</option>
+      </select>
+    </div>
+  </div>
+  <label class="flabel">图片（预留）</label>
+  <input type="text" id="editImg" placeholder="粘贴图片网址，或留空">
+  <div class="val" style="font-size:12px;color:#b3a591;margin-top:6px;line-height:1.6">也可以把图片文件按菜名放进页面同目录的 img 文件夹（如 img/红烧肉.jpg 或 .png），会自动显示；留空则显示占位图。</div>
+  <label class="flabel">备注（做法、口味提示）</label>
+  <input type="text" id="editNote" placeholder="选填">
+  <div class="btns">
+    <button class="danger" id="btnDelDish">删除</button>
+    <button class="primary" id="btnSaveDish">保存</button>
+  </div>
+</div>
+
+<!-- 二维码弹窗 -->
+<div class="mask" id="qrMask" hidden></div>
+<div class="modal" id="qrModal" hidden>
+  <h3>点菜二维码（长期有效）</h3>
+  <div id="qrBox"></div>
+  <p class="hint" id="qrHint">把这个链接/二维码发到家庭群一次就够了：以后新增、修改、停售菜品，家人打开的还是这个码，菜单会自动更新，不需要重新分享。</p>
+  <textarea id="qrLink" rows="3" readonly></textarea>
+  <div class="btns">
+    <button class="plain" id="btnCloseQr">关闭</button>
+    <button class="primary" id="btnCopyLink">复制链接</button>
+  </div>
+</div>
+
+<!-- 提交/收单结果弹窗 -->
+<div class="mask" id="doneMask" hidden></div>
+<div class="modal" id="doneModal" hidden>
+  <div id="doneBody"></div>
+  <div class="btns" id="doneBtns">
+    <button class="plain" id="btnShare">微信分享</button>
+    <button class="primary" id="btnCopyText">复制文字</button>
+  </div>
+  <div class="btns" id="doneBtns2">
+    <button class="plain" id="btnDoneClose">知道了</button>
+    <button class="primary" id="btnViewOrders">查看点菜单</button>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script>
+'use strict';
+/* ================= 工具 ================= */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const enc64 = s => {
+  const b = new TextEncoder().encode(s); let bin = '';
+  b.forEach(x => bin += String.fromCharCode(x));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const dec64 = s => {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  while (s.length % 4) s += '=';
+  const bin = atob(s);
+  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+};
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+const store = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+function menuHash(s) {
+  s = s || menuCompact();
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/* ================= 状态（菜品以菜名为唯一标识） ================= */
+const TAGS = ['荤菜', '素菜', '汤羹', '主食', '其他'];
+const TAG_COLOR = {'荤菜':'#e0654f','素菜':'#5aa06a','汤羹':'#4f8fc0','主食':'#b78b3e','其他':'#a4937f'};
+let dishes = load('cc_menu', []);
+let orders = load('cc_orders', []);
+let cfg = Object.assign({ family: '我家', base: '', topic: '', realtime: true, myName: '' }, load('cc_cfg', {}));
+let cart = load('cc_cart', {});            // 菜名 -> 数量
+let pubHash = load('cc_pubhash', '');      // 已同步到频道的菜单版本
+let lastMsgId = load('cc_lastmsg', '');    // 已处理到的最新频道消息
+let rtState = '';
+let curTag = '全部';
+let es = null;
+
+const saveMenu = () => store('cc_menu', dishes);
+const saveOrders = () => store('cc_orders', orders);
+const saveCfg = () => store('cc_cfg', cfg);
+const saveCart = () => store('cc_cart', cart);
+const dishByName = n => dishes.find(d => d.name === n);
+
+/* ================= 菜单编解码 / 同步 ================= */
+function menuCompact() {
+  return dishes.map(d => [d.name, d.tag || '', d.note || '', d.off ? 1 : '', d.img || ''].join('~')).join('|');
+}
+function parseMenuCompact(raw) {
+  return raw.split('|').filter(x => x.trim() !== '').map(x => {
+    const [name, tag, note, off, img] = x.split('~');
+    return { name: (name || '').trim(), tag: TAGS.includes(tag) ? tag : '其他', note: note || '', off: off === '1', img: img || '' };
+  }).filter(d => d.name);
+}
+function applyMenu(list, fromRemote) {
+  dishes = list; saveMenu();
+  const names = new Set(dishes.map(d => d.name));
+  Object.keys(cart).forEach(n => { if (!names.has(n)) delete cart[n]; }); saveCart();
+  if (fromRemote) {
+    pubHash = menuHash(); store('cc_pubhash', pubHash);
+    toast('菜单已更新：共 ' + dishes.length + ' 道菜');
+  }
+  renderTagBar(); renderDishes(); renderCartBar();
+  if (!$('#viewAdmin').hidden) renderAdminDishes();
+}
+let pubTimer = null;
+function menuChanged() {
+  saveMenu();
+  pubHash = ''; // 本地有改动，待重新同步
+  clearTimeout(pubTimer);
+  pubTimer = setTimeout(() => publishMenu(false), 1200);
+}
+function publishMenu(force) {
+  if (!cfg.topic || !cfg.realtime) return;
+  const d = menuCompact(), h = menuHash(d);
+  if (!force && h === pubHash) return;
+  if (d.length > 3500) { toast('菜品较多，超出实时同步上限，请重新生成链接分享'); return; }
+  fetch('https://ntfy.sh/' + cfg.topic, { method: 'POST', body: JSON.stringify({ __app: 'dc-menu', h: h, d: d }) })
+    .then(r => { if (r.ok) { pubHash = h; store('cc_pubhash', h); } else if (!force) toast('菜单同步失败，稍后会自动重试'); })
+    .catch(() => {});
+}
+/* 补收：从频道缓存拉取错过的消息（新设备首开、页面关过一段时间） */
+function fetchCatchup(silent) {
+  if (!cfg.topic || !cfg.realtime) return;
+  const since = lastMsgId || 'all';
+  fetch('https://ntfy.sh/' + cfg.topic + '/json?poll=1&since=' + encodeURIComponent(since))
+    .then(r => r.text()).then(t => {
+      let latestMenu = null, added = 0;
+      t.split('\n').forEach(line => {
+        if (!line.trim()) return;
+        let m; try { m = JSON.parse(line); } catch (e) { return; }
+        if (m && m.id && m.id !== lastMsgId) { lastMsgId = m.id; store('cc_lastmsg', lastMsgId); }
+        if (!m || typeof m.message !== 'string') return;
+        let b; try { b = JSON.parse(m.message); } catch (e) { return; }
+        if (b && b.__app === 'dc-menu' && typeof b.d === 'string') {
+          if (!latestMenu || (m.time || 0) >= latestMenu.time) latestMenu = { time: m.time || 0, h: b.h, d: b.d };
+        } else if (b && b.__app === 'dc' && b.items) {
+          const before = orders.length;
+          receiveOrder({ id: b.id, from: b.from || '家人', ts: b.ts || Date.now(), note: b.note || '', items: b.items.map(i => ({ name: i[0], count: i[1] })) }, 'catchup');
+          if (orders.length > before) added++;
+        }
+      });
+      if (latestMenu) {
+        if (latestMenu.d !== menuCompact()) applyMenu(parseMenuCompact(latestMenu.d), !silent);
+        else { pubHash = menuHash(latestMenu.d); store('cc_pubhash', pubHash); }
+      }
+      if (added && !silent) toast('已补收 ' + added + ' 条点菜');
+      if (latestMenu && latestMenu.h !== pubHash) publishMenu(true); // 保活/补发
+    }).catch(() => {});
+}
+function connectRealtime() {
+  if (es) { es.close(); es = null; }
+  rtState = '';
+  updateRtStatus();
+  if (!cfg.topic || !cfg.realtime) return;
+  try {
+    es = new EventSource('https://ntfy.sh/' + cfg.topic + '/sse');
+    es.onopen = () => { updateRtStatus('🟢 实时同步已连接'); fetchCatchup(false); };
+    es.onerror = () => updateRtStatus('🟡 连接中断，会自动重试');
+    es.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m && m.id && m.id !== lastMsgId) { lastMsgId = m.id; store('cc_lastmsg', lastMsgId); }
+      if (!m || typeof m.message !== 'string') return;
+      let b; try { b = JSON.parse(m.message); } catch (e) { return; }
+      if (b && b.__app === 'dc-menu' && typeof b.d === 'string') {
+        if (b.h !== menuHash()) applyMenu(parseMenuCompact(b.d), true);
+      } else if (b && b.__app === 'dc' && b.items) {
+        receiveOrder({ id: b.id, from: b.from || '家人', ts: b.ts || Date.now(), note: b.note || '', items: b.items.map(i => ({ name: i[0], count: i[1] })) }, false);
+      }
+    };
+  } catch (e) { updateRtStatus('🔴 无法连接'); }
+}
+function updateRtStatus(s) {
+  const el = $('#rtStatus'); if (!el) return;
+  if (s) rtState = s;
+  if (!cfg.topic) { el.textContent = '未开启：生成一次点菜二维码/链接后自动开启'; return; }
+  el.textContent = rtState || (cfg.realtime ? '连接中…' : '已关闭');
+}
+function beep() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination); o.type = 'sine';
+    o.frequency.setValueAtTime(880, ac.currentTime);
+    o.frequency.setValueAtTime(660, ac.currentTime + 0.16);
+    g.gain.setValueAtTime(0.25, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.45);
+    o.start(); o.stop(ac.currentTime + 0.45);
+  } catch (e) {}
+}
+
+/* ================= 链接生成 ================= */
+function baseUrl() {
+  const b = (cfg.base || '').trim();
+  if (b) return b.replace(/\/+$/, '') + '/';
+  return location.origin + location.pathname;
+}
+function orderPayload(o) {
+  return enc64(JSON.stringify({ __app: 'dc', id: o.id, from: o.from, ts: o.ts, note: o.note || '', items: o.items.map(i => [i.name, i.count]) }));
+}
+
+/* ================= 哈希入口（链接分享 / 收单） ================= */
+function handleHash() {
+  const h = location.hash.replace(/^#/, '');
+  if (!h) return false;
+  const kv = {};
+  h.split('&').forEach(p => { const i = p.indexOf('='); if (i > 0) kv[p.slice(0, i)] = p.slice(i + 1); });
+  let acted = false;
+  let topicChanged = false;
+  if (kv.t && kv.t !== cfg.topic) {
+    cfg.topic = kv.t; saveCfg();
+    pubHash = ''; store('cc_pubhash', '');
+    topicChanged = true;
+    acted = true;
+  }
+  if (kv.m) {
+    try {
+      const incoming = parseMenuCompact(dec64(kv.m));
+      if (incoming.length) {
+        applyMenu(incoming, false);
+        toast('已同步菜单，共 ' + incoming.length + ' 道菜');
+        acted = true;
+      }
+    } catch (e) { toast('菜单链接无效'); }
+  }
+  if (kv.o) {
+    try {
+      const o = JSON.parse(dec64(kv.o));
+      if (!o || o.__app !== 'dc' || !o.items) throw new Error('bad');
+      receiveOrder({ id: o.id || uid(), from: o.from || '家人', ts: o.ts || Date.now(), note: o.note || '', items: o.items.map(i => ({ name: i[0], count: i[1] })) }, true);
+      showDone(null, o, true);
+      acted = true;
+    } catch (e) { toast('点菜链接无效'); }
+  }
+  if (kv.admin) { showView('admin'); acted = true; }
+  if (topicChanged) { connectRealtime(); fetchCatchup(false); }
+  if (acted) history.replaceState(null, '', location.pathname + location.search);
+  return acted;
+}
+
+/* ================= 视图切换 ================= */
+function showView(v) {
+  $('#viewOrder').hidden = v !== 'order';
+  $('#viewAdmin').hidden = v !== 'admin';
+  if (v === 'admin') renderAdmin();
+  else renderDishes();
+  window.scrollTo(0, 0);
+}
+
+/* ================= 图片 ================= */
+function dishImgHtml(d, small) {
+  const cls = small ? 'imgwrap sm' : 'imgwrap';
+  const auto = d.img ? '' : ' data-auto="1"';
+  const src = d.img || ('img/' + d.name + '.jpg');
+  return '<div class="' + cls + '"><div class="imgph">🍽️</div>' +
+    '<img class="dimg" alt="" data-name="' + esc(d.name) + '"' + auto + ' src="' + esc(src) + '" onerror="imgErr(this)" onload="imgOk(this)"></div>';
+}
+window.imgErr = function (el) {
+  if (el.dataset.auto === '1' && !el.dataset.tried) {
+    el.dataset.tried = '1';
+    el.src = 'img/' + el.dataset.name + '.png';
+    return;
+  }
+  el.style.display = 'none';
+};
+window.imgOk = function (el) { el.style.display = 'block'; };
+
+/* ================= 点菜视图 ================= */
+function renderTagBar() {
+  const bar = $('#tagBar');
+  bar.innerHTML = ['全部'].concat(TAGS).map(t =>
+    '<button class="chip' + (curTag === t ? ' on' : '') + '" data-tag="' + t + '">' + t + '</button>').join('');
+  $$('#tagBar .chip').forEach(c => c.onclick = () => { curTag = c.dataset.tag; renderTagBar(); renderDishes(); });
+}
+function renderDishes() {
+  const list = $('#dishList');
+  const arr = dishes.filter(d => curTag === '全部' || d.tag === curTag);
+  $('#emptyMenu').hidden = dishes.length > 0;
+  list.innerHTML = arr.map(d => {
+    const n = cart[d.name] || 0;
+    const ctl = d.off ? '' : (n > 0
+      ? '<div class="stepper"><button class="minus" data-name="' + esc(d.name) + '" data-act="dec">−</button><span class="num">' + n + '</span><button data-name="' + esc(d.name) + '" data-act="inc">+</button></div>'
+      : '<button class="addbtn" data-name="' + esc(d.name) + '" data-act="inc">+ 加菜</button>');
+    return '<div class="dish' + (d.off ? ' off' : '') + '">' + dishImgHtml(d) +
+      '<div class="info"><div class="name">' + esc(d.name) +
+      '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>' +
+      (d.off ? '<span class="offmark">今日不做</span>' : '') + '</div>' +
+      (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>' + ctl + '</div>';
+  }).join('');
+  $$('#dishList button[data-act]').forEach(b => b.onclick = () => {
+    addToCart(b.dataset.name, b.dataset.act === 'inc' ? 1 : -1);
+  });
+  renderHeader();
+}
+function renderHeader() {
+  $('#appTitle').textContent = cfg.family + ' · 今晚吃啥';
+  const offN = dishes.filter(d => d.off).length;
+  $('#menuMeta').textContent = dishes.length ? ('共 ' + dishes.length + ' 道菜' + (offN ? '，今日不做 ' + offN + ' 道' : '')) : '';
+}
+function addToCart(name, delta) {
+  const d = dishByName(name);
+  if (!d || d.off) return;
+  const c = (cart[name] || 0) + delta;
+  if (c <= 0) delete cart[name]; else cart[name] = Math.min(c, 20);
+  saveCart(); renderDishes(); renderCartBar();
+}
+function cartCount() { return Object.values(cart).reduce((a, b) => a + b, 0); }
+function renderCartBar() {
+  const n = cartCount();
+  $('#cartBar').hidden = n === 0;
+  $('#cartInfo').innerHTML = '已选 ' + n + ' 道<span>点击去提交</span>';
+}
+
+/* ================= 购物抽屉 ================= */
+function openSheet() {
+  const items = dishes.filter(d => cart[d.name]);
+  if (!items.length) { toast('还没选菜哦'); return; }
+  $('#orderName').value = cfg.myName || '';
+  renderCartItems();
+  $('#orderNote').value = '';
+  $('#sheetMask').hidden = false; $('#cartSheet').hidden = false;
+}
+function closeSheet() { $('#sheetMask').hidden = true; $('#cartSheet').hidden = true; }
+function renderCartItems() {
+  const items = dishes.filter(d => cart[d.name]);
+  $('#cartItems').innerHTML = items.map(d =>
+    '<div class="arow"><div class="info"><div class="name">' + esc(d.name) + '</div></div>' +
+    '<div class="stepper"><button class="minus" data-name="' + esc(d.name) + '">−</button><span class="num">' + cart[d.name] + '</span>' +
+    '<button data-name="' + esc(d.name) + '">+</button></div></div>').join('');
+  $$('#cartItems .stepper button').forEach(b => b.onclick = () => { addToCart(b.dataset.name, b.textContent === '+' ? 1 : -1); renderCartItems(); });
+}
+
+/* ================= 提交点菜 ================= */
+function submitOrder() {
+  const items = dishes.filter(d => cart[d.name]).map(d => ({ name: d.name, count: cart[d.name] }));
+  if (!items.length) { toast('还没选菜哦'); return; }
+  const from = ($('#orderName').value || '').trim() || '家人';
+  cfg.myName = from; saveCfg();
+  const o = { id: uid(), from, ts: Date.now(), note: ($('#orderNote').value || '').trim(), items };
+  orders.unshift({ id: o.id, from: o.from, ts: o.ts, note: o.note, items: o.items, done: false, recv: Date.now() });
+  if (orders.length > 200) orders.length = 200;
+  saveOrders();
+  publishOrder(o);
+  cart = {}; saveCart();
+  renderDishes(); renderCartBar(); closeSheet();
+  showDone(o, null, false);
+}
+function orderText(o) {
+  return '【' + cfg.family + ' · 点菜】' + o.from + ' 想吃：\n' +
+    o.items.map(i => '· ' + i.name + ' ×' + i.count).join('\n') +
+    (o.note ? '\n备注：' + o.note : '') +
+    '\n👉 家长点此链接收单：' + baseUrl() + '#o=' + orderPayload(o);
+}
+function showDone(order, received, isIntake) {
+  const body = $('#doneBody');
+  const itemsHtml = list => '<ul>' + list.items.map(i => '<li>' + esc(i.name) + ' × ' + i.count + '</li>').join('') + '</ul>';
+  if (isIntake) {
+    body.innerHTML = '<div class="ok">✅</div><h3>已收到 ' + esc(received.from) + ' 的点菜</h3>' + itemsHtml(received) +
+      (received.note ? '<p class="note">备注：' + esc(received.note) + '</p>' : '');
+    $('#doneBtns').hidden = true;
+    $('#btnViewOrders').hidden = false;
+  } else {
+    lastOrderText = orderText(order);
+    body.innerHTML = '<div class="ok">🍽️</div><h3>点好啦！</h3>' + itemsHtml(order) +
+      (order.note ? '<p class="note">备注：' + esc(order.note) + '</p>' : '') +
+      '<p class="hint">' + (cfg.topic && cfg.realtime ? '家里设备开着的话会立刻收到新单提醒；' : '') +
+      '把点菜文字发到家庭群，家长点开里面的链接也能收单。</p>';
+    $('#doneBtns').hidden = false;
+    $('#btnViewOrders').hidden = true;
+  }
+  $('#doneMask').hidden = false; $('#doneModal').hidden = false;
+}
+function closeDone() { $('#doneMask').hidden = true; $('#doneModal').hidden = true; }
+let lastOrderText = '';
+
+/* ================= 订单接收 ================= */
+function receiveOrder(o, fromLink) {
+  if (orders.some(x => x.id === o.id)) { if (!fromLink) toast('这份点菜已经收到过啦'); return; }
+  o.done = false; o.recv = Date.now();
+  orders.unshift(o);
+  if (orders.length > 200) orders.length = 200;
+  saveOrders();
+  if (!fromLink) { toast('🔔 收到新点菜：' + o.from); beep(); }
+  if (!$('#viewAdmin').hidden && curTab === 'orders') renderOrders();
+}
+
+/* ================= 设置 ================= */
+function renderCfg() {
+  $('#cfgFamily').value = cfg.family;
+  $('#cfgBase').value = cfg.base;
+  $('#cfgBase').placeholder = location.origin + location.pathname;
+  $('#cfgRealtime').checked = !!cfg.realtime;
+  updateRtStatus();
+}
+function ensureTopic() {
+  if (!cfg.topic) {
+    cfg.topic = 'dc' + Math.random().toString(36).slice(2, 12);
+    saveCfg(); connectRealtime();
+  }
+  return cfg.topic;
+}
+
+/* ================= 二维码 ================= */
+function qrCanvas(text) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text); qr.make();
+  const n = qr.getModuleCount(), quiet = 3;
+  const scale = Math.max(3, Math.floor(300 / (n + quiet * 2)));
+  const size = (n + quiet * 2) * scale;
+  const cv = document.createElement('canvas');
+  cv.width = size; cv.height = size;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#2b2015';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+  return cv;
+}
+function openQr() {
+  if (typeof qrcode === 'undefined') { toast('二维码组件未加载，可先复制链接'); return; }
+  const topic = ensureTopic();
+  publishMenu(true); // 把当前菜单放进频道缓存，新设备扫码即可拿到
+  const link = baseUrl() + '#t=' + topic + '&m=' + enc64(menuCompact());
+  $('#qrLink').value = link;
+  const hint = $('#qrHint');
+  if (location.hostname === 'mcp.edgeone.site') {
+    hint.textContent = '⚠️ 当前打开的是临时预览地址，这个二维码几小时内就会失效（手机打开报 401）。请先按 README 在 EdgeOne 控制台完成正式部署，再从正式网址打开本页生成二维码。';
+  } else {
+    hint.textContent = '家人扫码即可点菜。更推荐把点菜链接发到家庭群，菜单有增改会自动同步，无需重新分享。';
+  }
+  const box = $('#qrBox');
+  box.innerHTML = '';
+  try { box.appendChild(qrCanvas(link)); }
+  catch (e) { box.innerHTML = '<p class="hint">链接太长，二维码生成失败，请直接复制链接</p>'; }
+  $('#qrMask').hidden = false; $('#qrModal').hidden = false;
+}
+function closeQr() { $('#qrMask').hidden = true; $('#qrModal').hidden = true; }
+
+/* ================= 订单管理 ================= */
+function dayKey(ts) { const d = new Date(ts); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function dayLabel(ts) {
+  const d = new Date(ts), now = new Date();
+  const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (same(d, now)) return '今天';
+  if (same(d, y)) return '昨天';
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+function renderOrders() {
+  const today = dayKey(Date.now());
+  const todayN = orders.filter(o => dayKey(o.ts) === today).length;
+  $('#orderCount').textContent = '今日 ' + todayN + ' 单，共 ' + orders.length + ' 单';
+  if (!orders.length) { $('#orderList').innerHTML = '<div class="empty" style="padding:40px 20px"><div class="big">📋</div><p>还没有收到点菜<br>家人点好后会出现在这里</p></div>'; return; }
+  const byDay = {};
+  orders.forEach(o => { (byDay[dayKey(o.ts)] = byDay[dayKey(o.ts)] || []).push(o); });
+  let html = '';
+  Object.keys(byDay).forEach(k => {
+    html += '<div class="daytitle">' + dayLabel(byDay[k][0].ts) + '</div>';
+    html += byDay[k].map(o => {
+      const t = new Date(o.ts);
+      const time = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+      return '<div class="ordercard' + (o.done ? ' done' : '') + '">' +
+        '<div class="head"><span class="who">' + esc(o.from) + '</span><span class="time">' + time + '</span></div>' +
+        '<ul>' + o.items.map(i => '<li>' + esc(i.name) + ' × ' + i.count + '</li>').join('') + '</ul>' +
+        (o.note ? '<div class="note">备注：' + esc(o.note) + '</div>' : '') +
+        '<div class="foot"><button class="mini ' + (o.done ? 'gray' : 'green') + '" data-id="' + esc(o.id) + '" data-act="done">' + (o.done ? '已做好 ✓' : '标记已做好') + '</button></div>' +
+        '</div>';
+    }).join('');
+  });
+  $('#orderList').innerHTML = html;
+  $$('#orderList button[data-act="done"]').forEach(b => b.onclick = () => {
+    const o = orders.find(x => x.id === b.dataset.id);
+    if (o) { o.done = !o.done; saveOrders(); renderOrders(); }
+  });
+}
+
+/* ================= 通用 ================= */
+let toastTimer = null;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+}
+function copyText(t) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(t).catch(() => fallbackCopy(t));
+  }
+  return Promise.resolve(fallbackCopy(t));
+}
+function fallbackCopy(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  ta.remove();
+}
+function publishOrder(o) {
+  if (!cfg.topic || !cfg.realtime) return;
+  const body = JSON.stringify({ __app: 'dc', id: o.id, from: o.from, ts: o.ts, note: o.note || '', items: o.items.map(i => [i.name, i.count]) });
+  fetch('https://ntfy.sh/' + cfg.topic, { method: 'POST', body: body }).catch(() => {});
+}
+
+/* ================= 管理视图 ================= */
+let curTab = 'menu';
+let editingName = null;
+function renderAdmin() {
+  if (curTab === 'menu') renderAdminDishes();
+  else if (curTab === 'orders') renderOrders();
+  else renderCfg();
+}
+function switchTab(t) {
+  curTab = t;
+  $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  $('#tabMenu').hidden = t !== 'menu';
+  $('#tabOrders').hidden = t !== 'orders';
+  $('#tabCfg').hidden = t !== 'cfg';
+  renderAdmin();
+}
+function renderAdminDishes() {
+  const list = $('#adminDishList');
+  if (!dishes.length) {
+    list.innerHTML = '<div class="empty" style="padding:40px 20px"><div class="big">🍳</div><p>还没有菜品，在上面输入菜名添加吧</p></div>';
+    return;
+  }
+  list.innerHTML = dishes.map(d =>
+    '<div class="arow">' + dishImgHtml(d, true) +
+    '<div class="info"><div class="name">' + esc(d.name) +
+    '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>' +
+    (d.off ? '<span class="offmark">今日不做</span>' : '') + '</div>' +
+    (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>' +
+    '<div class="ops">' +
+    '<button class="mini ' + (d.off ? 'gray' : 'green') + '" data-name="' + esc(d.name) + '" data-act="off">' + (d.off ? '已停' : '供应') + '</button>' +
+    '<button class="mini" data-name="' + esc(d.name) + '" data-act="edit">编辑</button>' +
+    '<button class="mini red" data-name="' + esc(d.name) + '" data-act="del">删除</button>' +
+    '</div></div>').join('');
+  $$('#adminDishList button[data-act]').forEach(b => b.onclick = () => {
+    const d = dishByName(b.dataset.name); if (!d) return;
+    if (b.dataset.act === 'off') { d.off = !d.off; menuChanged(); renderAdminDishes(); }
+    else if (b.dataset.act === 'edit') openDishModal(d.name);
+    else if (b.dataset.act === 'del') {
+      if (confirm('确定删除「' + d.name + '」？')) {
+        dishes = dishes.filter(x => x.name !== d.name);
+        delete cart[d.name]; saveCart();
+        menuChanged(); renderAdminDishes(); renderHeader();
+      }
+    }
+  });
+}
+function openDishModal(name) {
+  editingName = name || null;
+  $('#dishModalTitle').textContent = name ? '编辑菜品' : '添加菜品';
+  $('#editTag').innerHTML = TAGS.map(t => '<option value="' + t + '">' + t + '</option>').join('');
+  const d = name ? dishByName(name) : null;
+  $('#editName').value = d ? d.name : '';
+  $('#editTag').value = d ? d.tag : '其他';
+  $('#editOff').value = d && d.off ? '1' : '0';
+  $('#editImg').value = d ? (d.img || '') : '';
+  $('#editNote').value = d ? (d.note || '') : '';
+  $('#btnDelDish').hidden = !name;
+  $('#dishMask').hidden = false; $('#dishModal').hidden = false;
+  setTimeout(() => $('#editName').focus(), 60);
+}
+function saveDish() {
+  const name = ($('#editName').value || '').trim();
+  if (!name) { toast('菜名不能为空'); return; }
+  if (dishes.some(d => d.name === name && d.name !== editingName)) { toast('已有同名菜品'); return; }
+  const tag = $('#editTag').value, off = $('#editOff').value === '1';
+  const img = ($('#editImg').value || '').trim(), note = ($('#editNote').value || '').trim();
+  if (editingName) {
+    const d = dishByName(editingName);
+    if (d) {
+      Object.assign(d, { name, tag, off, img, note });
+      if (name !== editingName && cart[editingName]) { cart[name] = cart[editingName]; delete cart[editingName]; saveCart(); }
+    }
+  } else {
+    dishes.push({ name, tag, off, img, note });
+  }
+  menuChanged(); renderAdminDishes();
+  $('#dishMask').hidden = true; $('#dishModal').hidden = true;
+}
+
+/* ================= 事件绑定与启动 ================= */
+function bind() {
+  $('#btnAdmin').onclick = () => showView('admin');
+  $('#btnGoAdmin').onclick = () => showView('admin');
+  $('#btnBack').onclick = () => showView('order');
+  $$('.tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+  $('#quickAdd').onclick = quickAdd;
+  $('#quickName').addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
+  $('#btnQr').onclick = openQr;
+  $('#btnCloseQr').onclick = closeQr;
+  $('#qrMask').onclick = closeQr;
+  $('#btnCopyLink').onclick = () => { copyText($('#qrLink').value).then(() => toast('链接已复制，去家庭群粘贴吧')); };
+
+  $('#btnClear').onclick = () => {
+    const today = dayKey(Date.now());
+    const n = orders.filter(o => dayKey(o.ts) === today).length;
+    if (!n) { toast('今天还没有点菜'); return; }
+    if (confirm('清空今天的 ' + n + ' 单？')) { orders = orders.filter(o => dayKey(o.ts) !== today); saveOrders(); renderOrders(); }
+  };
+
+  $('#cartBar').onclick = openSheet;
+  $('#sheetMask').onclick = closeSheet;
+  $('#btnSubmit').onclick = submitOrder;
+
+  $('#btnDelDish').onclick = () => {
+    if (!editingName) return;
+    const d = dishByName(editingName);
+    if (d && confirm('确定删除「' + d.name + '」？')) {
+      dishes = dishes.filter(x => x.name !== editingName);
+      delete cart[editingName]; saveCart();
+      menuChanged();
+      $('#dishMask').hidden = true; $('#dishModal').hidden = true;
+      renderAdminDishes();
+    }
+  };
+  $('#btnSaveDish').onclick = saveDish;
+  $('#dishMask').onclick = () => { $('#dishMask').hidden = true; $('#dishModal').hidden = true; };
+
+  $('#btnCopyText').onclick = () => { copyText(lastOrderText).then(() => toast('已复制，去微信粘贴发送吧')); };
+  $('#btnShare').onclick = () => {
+    if (navigator.share) navigator.share({ text: lastOrderText }).catch(() => {});
+    else copyText(lastOrderText).then(() => toast('已复制，去微信粘贴发送吧'));
+  };
+  $('#btnDoneClose').onclick = closeDone;
+  $('#doneMask').onclick = closeDone;
+  $('#btnViewOrders').onclick = () => { closeDone(); showView('admin'); switchTab('orders'); };
+
+  $('#cfgFamily').addEventListener('change', e => { cfg.family = e.target.value.trim() || '我家'; saveCfg(); renderHeader(); });
+  $('#cfgBase').addEventListener('change', e => { cfg.base = e.target.value.trim(); saveCfg(); toast('已保存页面网址'); });
+  $('#cfgRealtime').addEventListener('change', e => { cfg.realtime = e.target.checked; saveCfg(); connectRealtime(); if (cfg.realtime) { fetchCatchup(false); publishMenu(true); } });
+  $('#btnTestMsg').onclick = () => {
+    if (!cfg.topic) { toast('还没有频道，先生成一次二维码'); return; }
+    fetch('https://ntfy.sh/' + cfg.topic, { method: 'POST', body: '测试：实时同步通道畅通 ✓' }).then(() => toast('已发送测试消息')).catch(() => toast('发送失败，检查网络'));
+  };
+  $('#btnNewTopic').onclick = () => { cfg.topic = 'dc' + Math.random().toString(36).slice(2, 12); saveCfg(); pubHash = ''; store('cc_pubhash',''); connectRealtime(); publishMenu(true); toast('已更换频道号，记得重新分享二维码/链接'); };
+  $('#btnExport').onclick = () => { copyText(JSON.stringify({ dishes, orders, cfg })).then(() => toast('备份已复制，粘贴到备忘录保存')); };
+  $('#btnImport').onclick = () => {
+    const s = prompt('粘贴备份内容：');
+    if (!s) return;
+    try {
+      const d = JSON.parse(s);
+      if (Array.isArray(d.dishes)) { dishes = d.dishes; saveMenu(); }
+      if (Array.isArray(d.orders)) { orders = d.orders; saveOrders(); }
+      if (d.cfg) { cfg = Object.assign(cfg, d.cfg); saveCfg(); }
+      renderCfg(); renderHeader(); renderAdminDishes();
+      toast('导入成功');
+    } catch (e) { toast('备份内容无效'); }
+  };
+}
+function quickAdd() {
+  const el = $('#quickName');
+  const name = (el.value || '').trim();
+  if (!name) { toast('先输入菜名'); return; }
+  if (dishByName(name)) { toast('已有「' + name + '」'); return; }
+  dishes.push({ name, tag: '其他', note: '', off: false, img: '' });
+  menuChanged(); el.value = ''; el.focus();
+  renderAdminDishes(); renderHeader();
+}
+function init() {
+  bind();
+  // 群文件版内置频道号/菜单：没有链接可带参数，直接用内置值
+  if (!cfg.topic && window.EMBEDDED_TOPIC) { cfg.topic = window.EMBEDDED_TOPIC; saveCfg(); }
+  if (!dishes.length && window.EMBEDDED_MENU) { try { dishes = parseMenuCompact(dec64(window.EMBEDDED_MENU)); saveMenu(); } catch (e) {} }
+  handleHash();
+  renderTagBar();
+  showView($('#viewAdmin').hidden ? 'order' : 'admin');
+  renderCartBar();
+  if (cfg.topic) { connectRealtime(); fetchCatchup(false); }
+  // 定期保活：让菜单一直留在频道缓存里（ntfy 缓存默认 12 小时）
+  setInterval(() => publishMenu(true), 5 * 60 * 60 * 1000);
+  // 家长端页面通常一直开着：点开带 #o=/#t=/#m= 的链接属于同文档导航，必须监听 hashchange
+  window.addEventListener('hashchange', () => {
+    handleHash();
+    renderTagBar();
+    showView($('#viewAdmin').hidden ? 'order' : 'admin');
+    renderCartBar();
+  });
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
