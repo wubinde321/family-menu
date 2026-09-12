@@ -133,6 +133,11 @@
   .quickadd{display:flex; gap:10px; padding:14px 14px 4px;}
   .quickadd input{flex:1;}
   .quickadd button{flex:0 0 auto;}
+  .batchbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 14px 0; background:#fff; border-radius:13px; padding:10px 12px; box-shadow:0 1px 4px rgba(90,60,30,.05);}
+  .batchbar select{flex:1; min-width:100px; width:auto;}
+  .batchinfo{font-size:12.5px; color:var(--sub); width:100%;}
+  .arow.sel{outline:2px solid var(--brand); outline-offset:-2px; cursor:pointer;}
+  .arow .ck{width:20px; height:20px; accent-color:var(--brand); flex:0 0 auto; margin:0;}
 
   .arow{display:flex; align-items:center; gap:10px; background:#fff; border-radius:13px; padding:10px 13px; margin:9px 14px; box-shadow:0 1px 4px rgba(90,60,30,.05);}
   .arow .info{flex:1; min-width:0;}
@@ -230,6 +235,14 @@
       <div class="quickadd">
         <input type="text" id="quickName" placeholder="输入菜名，回车快速添加">
         <button class="primary" id="quickAdd">添加</button>
+        <button class="mini" id="batchToggle">批量</button>
+      </div>
+      <div class="batchbar" id="batchBar" hidden>
+        <button class="mini" id="batchAll">全选</button>
+        <select id="batchTag"></select>
+        <button class="mini green" id="batchApply">改为该分类</button>
+        <button class="mini" id="batchExit">退出批量</button>
+        <div class="batchinfo" id="batchInfo"></div>
       </div>
       <div id="adminDishList"></div>
       <div class="btnrow">
@@ -905,6 +918,19 @@ function switchTab(t) {
   $('#tabCfg').hidden = t !== 'cfg';
   renderAdmin();
 }
+let batchMode = false;
+const batchSel = new Set();
+function setBatchMode(on) {
+  batchMode = on; batchSel.clear();
+  $('#batchBar').hidden = !on;
+  $('#batchToggle').hidden = on;
+  if (on) $('#batchTag').innerHTML = TAGS.map(t => '<option>' + t + '</option>').join('');
+  renderAdminDishes();
+}
+function updateBatchInfo() {
+  $('#batchInfo').textContent = '已选 ' + batchSel.size + ' / ' + dishes.length + ' 道，点击菜品行即可勾选';
+  $('#batchAll').textContent = (dishes.length && batchSel.size === dishes.length) ? '取消全选' : '全选';
+}
 function renderAdminDishes() {
   const list = $('#adminDishList');
   if (!dishes.length) {
@@ -913,20 +939,33 @@ function renderAdminDishes() {
   }
   list.innerHTML = dishes.map(d => {
     const st = timeState(d);
-    return '<div class="arow">' + dishImgHtml(d, true) +
-    '<div class="info"><div class="name">' + esc(d.name) +
-    '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>' +
-    (st.limited ? '<span class="badge timeb' + (st.active ? '' : '" style="background:#b3a591') + '">⏰ ' + esc(st.label) + (st.active ? '' : ' ' + st.tip) + '</span>' : '') +
-    (d.off ? '<span class="offmark">今日不做</span>' : '') + '</div>' +
-    (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>' +
-    '<div class="ops">' +
-    '<button class="mini arrow" data-name="' + esc(d.name) + '" data-act="up" title="上移">↑</button>' +
-    '<button class="mini arrow" data-name="' + esc(d.name) + '" data-act="down" title="下移">↓</button>' +
-    '<button class="mini ' + (d.off ? 'gray' : 'green') + '" data-name="' + esc(d.name) + '" data-act="off">' + (d.off ? '已停' : '供应') + '</button>' +
-    '<button class="mini" data-name="' + esc(d.name) + '" data-act="edit">编辑</button>' +
-    '<button class="mini red" data-name="' + esc(d.name) + '" data-act="del">删除</button>' +
-    '</div></div>';
+    const info = '<div class="info"><div class="name">' + esc(d.name) +
+      '<span class="badge" style="background:' + (TAG_COLOR[d.tag] || '#999') + '">' + esc(d.tag) + '</span>' +
+      (st.limited ? '<span class="badge timeb' + (st.active ? '' : '" style="background:#b3a591') + '">⏰ ' + esc(st.label) + (st.active ? '' : ' ' + st.tip) + '</span>' : '') +
+      (d.off ? '<span class="offmark">今日不做</span>' : '') + '</div>' +
+      (d.note ? '<div class="sub">' + esc(d.note) + '</div>' : '') + '</div>';
+    if (batchMode) {
+      return '<div class="arow' + (batchSel.has(d.name) ? ' sel' : '') + '" data-batch="' + esc(d.name) + '">' +
+        '<input type="checkbox" class="ck"' + (batchSel.has(d.name) ? ' checked' : '') + '>' + info + '</div>';
+    }
+    return '<div class="arow">' + dishImgHtml(d, true) + info +
+      '<div class="ops">' +
+      '<button class="mini arrow" data-name="' + esc(d.name) + '" data-act="up" title="上移">↑</button>' +
+      '<button class="mini arrow" data-name="' + esc(d.name) + '" data-act="down" title="下移">↓</button>' +
+      '<button class="mini ' + (d.off ? 'gray' : 'green') + '" data-name="' + esc(d.name) + '" data-act="off">' + (d.off ? '已停' : '供应') + '</button>' +
+      '<button class="mini" data-name="' + esc(d.name) + '" data-act="edit">编辑</button>' +
+      '<button class="mini red" data-name="' + esc(d.name) + '" data-act="del">删除</button>' +
+      '</div></div>';
   }).join('');
+  if (batchMode) {
+    $$('#adminDishList .arow[data-batch]').forEach(r => r.onclick = () => {
+      const n = r.dataset.batch;
+      if (batchSel.has(n)) batchSel.delete(n); else batchSel.add(n);
+      renderAdminDishes();
+    });
+    updateBatchInfo();
+    return;
+  }
   $$('#adminDishList button[data-act]').forEach(b => b.onclick = () => {
     const d = dishByName(b.dataset.name); if (!d) return;
     if (b.dataset.act === 'up' || b.dataset.act === 'down') moveDish(d.name, b.dataset.act === 'up' ? -1 : 1);
@@ -995,6 +1034,21 @@ function bind() {
 
   $('#quickAdd').onclick = quickAdd;
   $('#quickName').addEventListener('keydown', e => { if (e.key === 'Enter') quickAdd(); });
+  $('#batchToggle').onclick = () => setBatchMode(true);
+  $('#batchExit').onclick = () => setBatchMode(false);
+  $('#batchAll').onclick = () => {
+    if (dishes.length && batchSel.size === dishes.length) batchSel.clear();
+    else dishes.forEach(d => batchSel.add(d.name));
+    renderAdminDishes();
+  };
+  $('#batchApply').onclick = () => {
+    const tag = $('#batchTag').value;
+    if (!batchSel.size) { toast('先勾选要改的菜'); return; }
+    let n = 0;
+    dishes.forEach(d => { if (batchSel.has(d.name)) { d.tag = tag; n++; } });
+    menuChanged(); setBatchMode(false);
+    toast('已把 ' + n + ' 道菜改为「' + tag + '」');
+  };
   $('#btnQr').onclick = openQr;
   $('#btnCloseQr').onclick = closeQr;
   $('#qrMask').onclick = closeQr;
